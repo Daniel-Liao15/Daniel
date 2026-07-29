@@ -615,7 +615,18 @@
     return new Date(y, m - 1, d);
   }
 
-  // ====== 云同步 ======
+  // ====== 云同步（UTF-8 安全编解码） ======
+  function encodeBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    const binStr = Array.from(bytes, b => String.fromCharCode(b)).join('');
+    return btoa(binStr);
+  }
+  function decodeBase64(b64) {
+    const binStr = atob(b64);
+    const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
   async function cloudSync(direction) {
     // direction: 'pull' 从云端拉取, 'push' 推送到云端, 'both' 双向
     if (isSyncing) return;
@@ -628,8 +639,7 @@
         });
         if (resp.ok) {
           const result = await resp.json();
-          // content 是 base64 编码的
-          const content = JSON.parse(decodeURIComponent(escape(atob(result.content.replace(/\s/g, '')))));
+          const content = JSON.parse(decodeBase64(result.content.replace(/\s/g, '')));
           if (content.last_update > state.lastUpdate) {
             if (content.tasks) state.tasks = { ...state.tasks, ...content.tasks };
             if (content.done) state.done = { ...state.done, ...content.done };
@@ -650,11 +660,11 @@
         state.lastUpdate = Date.now();
         const body = {
           message: 'cloud sync: update data',
-          content: btoa(unescape(encodeURIComponent(JSON.stringify({
+          content: encodeBase64(JSON.stringify({
             tasks: state.tasks,
             done: state.done,
             last_update: state.lastUpdate
-          })))),
+          })),
           branch: 'main'
         };
         if (sha) body.sha = sha;
