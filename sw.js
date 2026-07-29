@@ -4,7 +4,7 @@
    - On activate: wipe all old caches + claim clients immediately
 */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `daniel-static-${CACHE_VERSION}`;
 
 const STATIC_FILES = [
