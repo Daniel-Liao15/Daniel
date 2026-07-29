@@ -1098,20 +1098,27 @@
     return String(s).replace(/"/g, '&quot;');
   }
 
-  // ====== Service Worker（PWA 离线缓存） ======
+  // ====== Service Worker（PWA）—— 自动强制刷新最新版本 ======
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').then(reg => {
-        // 检测到新版本时，提示用户刷新（跨设备同步时很有用）
+    // 先清除所有旧 SW 注册，确保新版本立即生效
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).then(() => {
+      navigator.serviceWorker.register('./sw.js?t=' + Date.now()).then(reg => {
         reg.addEventListener('updatefound', () => {
           const w = reg.installing;
           if (!w) return;
           w.addEventListener('statechange', () => {
-            if (w.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] 新版本已就绪，刷新即可生效');
+            if (w.state === 'activated' && navigator.serviceWorker.controller) {
+              // SW 激活后自动刷新页面以加载最新内容
+              window.location.reload();
             }
           });
         });
+        // 如果 SW 已经控制了页面（非首次安装），也刷新确保新内容
+        if (navigator.serviceWorker.controller) {
+          window.location.reload();
+        }
       }).catch(err => console.warn('SW 注册失败：', err));
     });
   }
