@@ -3,7 +3,7 @@
    - Network-first for the HTML so updates roll out quickly
    - Cache-first for static assets (icons, manifest)
 */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const SHELL_CACHE = `daniel-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `daniel-assets-${CACHE_VERSION}`;
 
