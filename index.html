@@ -914,10 +914,13 @@
     const dateStr = state.currentDate;
     ensureDay(dateStr);
     const dayTasks = state.tasks[dateStr];
+    const dayDone = state.done[dateStr] || {};
     SUBJECTS.forEach(subj => {
-      const count = (dayTasks[subj.key] || []).length;
+      const tasks = dayTasks[subj.key] || [];
+      const done = tasks.filter((_, i) => dayDone[`${subj.key}-${i}`]).length;
+      const remaining = tasks.length - done;
       const el = document.getElementById(`badge-${subj.key}`);
-      if (el) el.textContent = count;
+      if (el) el.textContent = remaining;
     });
   }
 
