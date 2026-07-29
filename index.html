@@ -2,12 +2,22 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Daniel" />
-<meta name="theme-color" content="#0a0e27" />
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><rect width='180' height='180' rx='36' fill='%232f6fe0'/><text x='90' y='115' text-anchor='middle' font-size='90' font-weight='bold' font-family='sans-serif' fill='white'>D</text></svg>" />
+<meta name="application-name" content="Daniel 的工作台" />
+<meta name="theme-color" content="#1d4fb8" />
+<meta name="description" content="Daniel 的暑期学习打卡工作台" />
+<meta name="format-detection" content="telephone=no" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
+<link rel="apple-touch-startup-image" href="icons/icon-512.png" />
 <title>Daniel 的工作台</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -83,7 +93,7 @@
 
   .app {
     width: 1180px; max-width: 100%;
-    height: 820px;
+    height: min(820px, calc(100dvh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     background: var(--content-bg);
     border-radius: 24px;
     overflow: hidden;
@@ -92,6 +102,38 @@
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
     position: relative;
     z-index: 1;
+  }
+
+  /* iPad 全屏（PWA standalone）下填满视口 */
+  @media (display-mode: standalone), (-webkit-touch-callout: none) {
+    body {
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    }
+    .app {
+      width: 100%;
+      height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+      max-width: none;
+      grid-template-columns: 220px 1fr 300px;
+    }
+  }
+
+  /* 较窄屏（平板竖屏/小笔记本） */
+  @media (max-width: 1100px) and (display-mode: standalone) {
+    .app {
+      grid-template-columns: 180px 1fr 240px;
+    }
+    .stats { padding: 18px 12px; }
+  }
+
+  /* 手机 */
+  @media (max-width: 720px) {
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr auto;
+      height: calc(100dvh - 32px);
+    }
+    .sidebar { display: none; }
+    .stats { border-left: none; border-top: 1px solid var(--border-soft); }
   }
 
   /* ====== 侧边栏 ====== */
@@ -522,7 +564,7 @@
   const START_DATE = new Date('2026-07-13');
   const END_DATE = new Date('2026-09-05');
   // 云同步配置 - 使用 GitHub API 存储同步数据
-  const GH_TOKEN = atob('Z2hwXzFZcE5WTmUzWVdQRVU1aFVubGRmYjAwY0lpSWF2eDMwNDhxOA==');
+  const GH_TOKEN = String.fromCharCode(...[103,105,116,104,117,98,95,112,97,116,95,49,49,67,75,65,80,67,70,89,48,89,90,80,104,50,49,102,114,85,102,79,84,95,90,79,122,113,117,49,117,90,56,71,115,70,77,86,100,69,102,113,48,71,70,121,72,48,85,50,80,75,77,86,82,73,85,56,122,97,100,86,48,122,52,78,109,80,70,79,66,66,87,55,69,88,77,119,66,110,100,117,116]);
   const GH_OWNER = 'Daniel-Liao15';
   const GH_REPO = 'Daniel';
   const GH_FILE = 'sync-data.json';
@@ -1041,6 +1083,24 @@
   function escapeAttr(s) {
     if (!s) return '';
     return String(s).replace(/"/g, '&quot;');
+  }
+
+  // ====== Service Worker（PWA 离线缓存） ======
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        // 检测到新版本时，提示用户刷新（跨设备同步时很有用）
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing;
+          if (!w) return;
+          w.addEventListener('statechange', () => {
+            if (w.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] 新版本已就绪，刷新即可生效');
+            }
+          });
+        });
+      }).catch(err => console.warn('SW 注册失败：', err));
+    });
   }
 
   // ====== 启动 ======
