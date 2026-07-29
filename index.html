@@ -653,32 +653,23 @@
           const remoteVersion = content._dataVersion || 0;
           if (remoteVersion >= DATA_VERSION && content.last_update > state.lastUpdate) {
             let hasNewData = false;
-            // 逐天合并：云端有的天但本地没有 → 添加；云端和本地都有的 → 保留本地
+            // 合并云端数据：云端数据优先覆盖本地（支持任务编辑、打卡/取消打卡同步）
             if (content.tasks) {
               Object.keys(content.tasks).forEach(day => {
-                if (!state.tasks[day]) {
-                  state.tasks[day] = content.tasks[day];
-                  hasNewData = true;
-                }
+                state.tasks[day] = { ...state.tasks[day], ...content.tasks[day] };
+                hasNewData = true;
               });
             }
             if (content.done) {
               Object.keys(content.done).forEach(day => {
-                if (!state.done[day]) {
-                  state.done[day] = content.done[day];
-                  hasNewData = true;
-                }
+                const old = JSON.stringify(state.done[day] || {});
+                state.done[day] = { ...state.done[day], ...content.done[day] };
+                if (JSON.stringify(state.done[day]) !== old) hasNewData = true;
               });
             }
-            if (hasNewData) {
-              state.lastUpdate = content.last_update || Date.now();
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-              renderAll();
-            } else {
-              // 即使没有新数据，也更新 lastUpdate 避免重复拉取
-              state.lastUpdate = content.last_update || Date.now();
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            }
+            state.lastUpdate = content.last_update || Date.now();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            if (hasNewData) renderAll();
           }
         }
       }
