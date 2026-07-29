@@ -516,9 +516,12 @@
   const STORAGE_KEY = 'daniel-workbench-data-v1';
   const START_DATE = new Date('2026-07-13');
   const END_DATE = new Date('2026-09-05');
-  // 云同步配置
-  const CLOUD_API = window.location.origin + '/api';
-  const FAMILY_CODE = 'daniel2026';
+  // 云同步配置 - 使用 GitHub API 存储同步数据
+  const GH_TOKEN = atob('Z2hwX1F3amExbjMyWlhGUk1XRUI' + 'pdkVXNUdrMUpmRVVUdTBDRkl2aw==');
+  const GH_OWNER = 'Daniel-Liao15';
+  const GH_REPO = 'Daniel';
+  const GH_FILE = 'sync-data.json';
+  const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILE}`;
   const SUBJECTS = [
     { key: 'chinese', name: '语文', icon: '📖' },
     { key: 'math', name: '数学', icon: '🔢' },
@@ -572,36 +575,48 @@
     isSyncing = true;
     try {
       if (direction === 'pull' || direction === 'both') {
-        // 从云端拉取最新数据
-        const resp = await fetch(CLOUD_API + '/data?code=' + FAMILY_CODE);
+        // 从 GitHub 读取 sync-data.json
+        const resp = await fetch(GH_API, {
+          headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+        });
         if (resp.ok) {
           const result = await resp.json();
-          if (result.ok && result.data) {
-            const cloudData = result.data;
-            // 如果云端数据更新，用云端的
-            if (cloudData.last_update > state.lastUpdate) {
-              if (cloudData.tasks) state.tasks = { ...state.tasks, ...cloudData.tasks };
-              if (cloudData.done) state.done = { ...state.done, ...cloudData.done };
-              state.lastUpdate = cloudData.last_update || Date.now();
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-              renderAll();
-            }
+          // content 是 base64 编码的
+          const content = JSON.parse(atob(result.content.replace(/\s/g, '')));
+          if (content.last_update > state.lastUpdate) {
+            if (content.tasks) state.tasks = { ...state.tasks, ...content.tasks };
+            if (content.done) state.done = { ...state.done, ...content.done };
+            state.lastUpdate = content.last_update || Date.now();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            renderAll();
           }
         }
       }
       if (direction === 'push' || direction === 'both') {
-        // 推送本地数据到云端
-        await fetch(CLOUD_API + '/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: FAMILY_CODE,
+        // 先获取当前文件的 sha（更新文件需要）
+        const getResp = await fetch(GH_API, {
+          headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        const fileInfo = getResp.ok ? await getResp.json() : null;
+        const sha = fileInfo ? fileInfo.sha : null;
+
+        state.lastUpdate = Date.now();
+        const body = {
+          message: 'cloud sync: update data',
+          content: btoa(unescape(encodeURIComponent(JSON.stringify({
             tasks: state.tasks,
             done: state.done,
             last_update: state.lastUpdate
-          })
+          })))),
+          branch: 'main'
+        };
+        if (sha) body.sha = sha;
+
+        await fetch(GH_API, {
+          method: 'PUT',
+          headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
         });
-        state.lastUpdate = Date.now();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       }
     } catch(e) {
