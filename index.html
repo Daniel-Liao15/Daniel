@@ -629,7 +629,7 @@
         if (resp.ok) {
           const result = await resp.json();
           // content 是 base64 编码的
-          const content = JSON.parse(atob(result.content.replace(/\s/g, '')));
+          const content = JSON.parse(decodeURIComponent(escape(atob(result.content.replace(/\s/g, '')))));
           if (content.last_update > state.lastUpdate) {
             if (content.tasks) state.tasks = { ...state.tasks, ...content.tasks };
             if (content.done) state.done = { ...state.done, ...content.done };
