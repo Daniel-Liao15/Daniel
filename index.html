@@ -1098,25 +1098,25 @@
     return String(s).replace(/"/g, '&quot;');
   }
 
-  // ====== Service Worker（PWA）—— 自动强制刷新最新版本 ======
-  if ('serviceWorker' in navigator) {
-    // 先清除所有旧 SW 注册，确保新版本立即生效
+  // ====== Service Worker（PWA）—— 自动升级，防死循环 ======
+  if ('serviceWorker' in navigator && !sessionStorage.getItem('sw-upgraded')) {
+    // 先清除所有旧 SW 注册
     navigator.serviceWorker.getRegistrations().then(regs => {
       regs.forEach(r => r.unregister());
     }).then(() => {
-      navigator.serviceWorker.register('./sw.js?t=' + Date.now()).then(reg => {
+      navigator.serviceWorker.register('./sw.js?v=' + Date.now()).then(reg => {
         reg.addEventListener('updatefound', () => {
           const w = reg.installing;
           if (!w) return;
           w.addEventListener('statechange', () => {
-            if (w.state === 'activated' && navigator.serviceWorker.controller) {
-              // SW 激活后自动刷新页面以加载最新内容
+            if (w.state === 'activated' && navigator.serviceWorker.controller && !sessionStorage.getItem('sw-upgraded')) {
+              sessionStorage.setItem('sw-upgraded', '1');
               window.location.reload();
             }
           });
         });
-        // 如果 SW 已经控制了页面（非首次安装），也刷新确保新内容
-        if (navigator.serviceWorker.controller) {
+        if (navigator.serviceWorker.controller && !sessionStorage.getItem('sw-upgraded')) {
+          sessionStorage.setItem('sw-upgraded', '1');
           window.location.reload();
         }
       }).catch(err => console.warn('SW 注册失败：', err));
