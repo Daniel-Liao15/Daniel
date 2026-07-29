@@ -560,7 +560,8 @@
 
 <script>
   // ====== 数据层 ======
-  const STORAGE_KEY = 'daniel-workbench-data-v2';
+  const STORAGE_KEY = 'daniel-workbench-data-v3';
+  const DATA_VERSION = 2; // 数据版本号，云端数据版本低于此值则忽略
   const START_DATE = new Date('2026-07-13');
   const END_DATE = new Date('2026-09-05');
   // 云同步配置 - 使用 GitHub API 存储同步数据
@@ -605,6 +606,7 @@
     lastUpdate: 0
   };
   let isSyncing = false; // 防止同步循环
+  let hasUserEdits = false; // 是否有用户主动编辑，防止初始默认数据覆盖云端
 
   function dateToStr(d) {
     const y = d.getFullYear();
@@ -630,29 +632,59 @@
     return new TextDecoder().decode(bytes);
   }
 
-  async function cloudSync(direction) {
+  async function cloudSync(direction, opts) {
     // direction: 'pull' 从云端拉取, 'push' 推送到云端, 'both' 双向
+    // opts.forcePush: 跳过 hasUserEdits 检查（手动同步时使用）
     if (isSyncing) return;
     isSyncing = true;
+    const forcePush = opts && opts.forcePush;
     try {
       if (direction === 'pull' || direction === 'both') {
-        // 从 GitHub 读取 sync-data.json
+        // 从 GitHub 读��� sync-data.json
         const resp = await fetch(GH_API, {
           headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
         });
         if (resp.ok) {
           const result = await resp.json();
           const content = JSON.parse(decodeBase64(result.content.replace(/\s/g, '')));
-          if (content.last_update > state.lastUpdate) {
-            if (content.tasks) state.tasks = { ...state.tasks, ...content.tasks };
-            if (content.done) state.done = { ...state.done, ...content.done };
-            state.lastUpdate = content.last_update || Date.now();
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            renderAll();
+          // 检查数据版本：云端版本太低说明是旧数据，不合并
+          const remoteVersion = content._dataVersion || 0;
+          if (remoteVersion >= DATA_VERSION && content.last_update > state.lastUpdate) {
+            let hasNewData = false;
+            // 逐天合并：云端有的天但本地没有 → 添加；云端和本地都有的 → 保留本地
+            if (content.tasks) {
+              Object.keys(content.tasks).forEach(day => {
+                if (!state.tasks[day]) {
+                  state.tasks[day] = content.tasks[day];
+                  hasNewData = true;
+                }
+              });
+            }
+            if (content.done) {
+              Object.keys(content.done).forEach(day => {
+                if (!state.done[day]) {
+                  state.done[day] = content.done[day];
+                  hasNewData = true;
+                }
+              });
+            }
+            if (hasNewData) {
+              state.lastUpdate = content.last_update || Date.now();
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+              renderAll();
+            } else {
+              // 即使没有新数据，也更新 lastUpdate 避免重复拉取
+              state.lastUpdate = content.last_update || Date.now();
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            }
           }
         }
       }
       if (direction === 'push' || direction === 'both') {
+        // 只有用户主动编辑过才推送（避免初始默认数据覆盖云端正确数据）
+        // forcePush 跳过此检查（手动同步按钮使用）
+        if (!hasUserEdits && direction === 'both' && !forcePush) { isSyncing = false; return; }
+
         // 先获取当前文件的 sha（更新文件需要）
         const getResp = await fetch(GH_API, {
           headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
@@ -666,6 +698,7 @@
           content: encodeBase64(JSON.stringify({
             tasks: state.tasks,
             done: state.done,
+            _dataVersion: DATA_VERSION,
             last_update: state.lastUpdate
           })),
           branch: 'main'
@@ -802,6 +835,7 @@
         const key = card.dataset.key;
         const dayDone = state.done[dateStr];
         dayDone[key] = !dayDone[key];
+        hasUserEdits = true;
         saveState();
         renderAll();
       });
@@ -891,13 +925,12 @@
     const today = new Date();
     const totalDays = Math.floor((today - START_DATE) / (1000*60*60*24)) + 1;
     const clampedTotal = Math.max(1, Math.min(48, totalDays));
-    document.getElementById('total-done').textContent = doneDays;
-    document.getElementById('total-tasks').textContent = clampedTotal;
 
     // 本周进度
     const weekStart = new Date(today);
     const dayOfWeek = weekStart.getDay();
-    weekStart.setDate(weekStart.getDate() - dayOfWeek + 1); // 周一
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    weekStart.setDate(weekStart.getDate() - daysFromMonday); // 本周一
     let weekDone = 0;
     for (let i = 0; i < 7; i++) {
       const wd = new Date(weekStart);
@@ -992,11 +1025,13 @@
         input.addEventListener('input', (e) => {
           const field = e.target.className.replace('edit-', '');
           state.tasks[dateStr][subjKey][idx][field] = e.target.value;
+          hasUserEdits = true;
           saveState();
         });
       });
 
       row.querySelector('.del-task-btn').addEventListener('click', () => {
+        hasUserEdits = true;
         state.tasks[dateStr][subjKey].splice(idx, 1);
         // 调整 done 状态
         const dayDone = state.done[dateStr];
@@ -1024,6 +1059,7 @@
     body.querySelectorAll('.add-task-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const subjKey = btn.dataset.subj;
+        hasUserEdits = true;
         state.tasks[dateStr][subjKey].push({ title: '新任务', sub: '', stage: '', time: '', video: '' });
         saveState();
         renderEditModal();
@@ -1061,8 +1097,9 @@
   });
 
   document.getElementById('reset-btn').addEventListener('click', () => {
-    if (confirm('确定重置所有打卡数据吗？任务内容会保留，只清除勾选状态。')) {
+    if (confirm('确���重置所有打卡数据吗？任务内容会保留，只清除勾选状态。')) {
       state.done = {};
+      hasUserEdits = true;
       saveState();
       renderAll();
     }
@@ -1071,7 +1108,7 @@
   document.getElementById('sync-btn').addEventListener('click', async () => {
     const btn = document.getElementById('sync-btn');
     btn.textContent = '☁️ 同步中...';
-    await cloudSync('both');
+    await cloudSync('both', { forcePush: true });
     btn.textContent = '✅ 已同步';
     setTimeout(() => { btn.textContent = '☁️ 云同步'; }, 2000);
   });
