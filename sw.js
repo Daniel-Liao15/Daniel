@@ -1,10 +1,10 @@
-/* Service Worker for Daniel Workbench — v5
+/* Service Worker for Daniel Workbench — v7
    - NEVER cache HTML — always fetch fresh from network
    - Cache static assets only (icons, manifest)
    - On activate: wipe all old caches + claim clients immediately
 */
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const STATIC_CACHE = `daniel-static-${CACHE_VERSION}`;
 
 const STATIC_FILES = [
